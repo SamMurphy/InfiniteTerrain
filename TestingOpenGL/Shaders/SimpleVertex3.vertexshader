@@ -1,0 +1,23 @@
+#version 430
+
+// Input vertex data, different for all executions of this shader.
+layout(location = 0) in vec3 vertexPosition_modelspace;
+//layout(location = 1) in vec2 textureCoordinates;
+
+// Values that stay constant for the whole mesh.
+uniform mat4 V;
+uniform mat4 P;
+uniform mat4 Model;
+
+uniform sampler1D colorGradient;
+uniform sampler2D heightNormalMap;
+
+uniform float blockSize;
+
+void main(){
+	
+	float height = texture2D(heightNormalMap, vertexPosition_modelspace.xz / blockSize).a;
+	vec4 position = vec4(vertexPosition_modelspace.x, height, vertexPosition_modelspace.z, 1.0);
+
+	gl_Position = position;
+}

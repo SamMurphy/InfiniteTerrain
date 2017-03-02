@@ -1,0 +1,92 @@
+#version 430
+
+// Interpolated values from the vertex shaders
+in vec3 fragmentPosition;
+in vec3 fragmentNormal;
+
+uniform mat4 Model;
+uniform mat4 V;
+//uniform mat4 P;
+
+// Contains gradient to map colour based on height
+uniform sampler1D colorGradient;
+uniform sampler2D heightNormalMap;
+
+// Directional Light
+struct DirLight {
+ vec4 position;
+ vec3 intensities;
+ float ambientCoefficient;
+};
+uniform DirLight Light;
+
+// Fog
+struct FogInfo {
+ float maxDistance;
+ float minDistance;
+ vec3 colour;
+};
+uniform FogInfo Fog;
+
+// Float to define colouring mode
+uniform int mode;
+
+// Ouput data
+out vec3 colour;
+
+vec3 ApplyDirectionalLight(DirLight light, vec3 surfaceColour, vec3 normal, vec3 surfaceToCamera) {
+    // -surfacePosInCameraSpace + light pos in camera space
+    vec3 surfaceToLight = normalize(surfaceToCamera + (V * light.position).xyz);
+
+    //ambient
+    vec3 ambient = light.ambientCoefficient * surfaceColour.rgb * light.intensities;
+
+    //diffuse
+    float diffuseCoefficient = clamp(abs(dot(normal, surfaceToLight)), 0, 1);
+    vec3 diffuse = diffuseCoefficient * surfaceColour.rgb * light.intensities;
+    // Color with Light applied
+    return ambient + diffuse;
+}
+
+float rand(vec2 co){
+  return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+}
+
+float linearFog(float zPositionInCameraSpace, float maxDistance, float minDistance) {
+    float dist = abs( zPositionInCameraSpace );
+    float fogFactor = (maxDistance - dist) / (maxDistance - minDistance);
+    fogFactor = clamp( fogFactor, 0.0, 1.0 );
+    return fogFactor;
+}
+
+void main() {
+    // Variables needed for lighting
+    vec3 normalInCameraSpace = normalize(V * Model * vec4(fragmentNormal, 0)).xyz;
+    vec3 surfacePosInCameraSpace = vec3(V * Model * vec4(fragmentPosition, 1));
+    vec3 surfaceToCamera = vec3(0,0,0) -surfacePosInCameraSpace;
+    
+    // Colour value from texture based on fragment height
+    vec4 surfaceColour = vec4(texture(colorGradient, (fragmentPosition.y + 100.0) / 200.0).rgb, 1);
+    // Random(ish) colour offset
+    float offset = rand(fragmentPosition.xy) / 20.0;
+    surfaceColour += vec4(offset, offset, offset, 1.0);
+    //combine colour from a directional light
+    vec3 colourWithLight = ApplyDirectionalLight(Light, surfaceColour.rgb, normalInCameraSpace, surfaceToCamera);
+
+    // Calculate and apply fog
+    float fogFactor = linearFog(surfacePosInCameraSpace.z, Fog.maxDistance, Fog.minDistance);
+    vec3 colourWithFog = mix(Fog.colour, colourWithLight, fogFactor);
+    
+    // Default lighting mode
+    colour = colourWithFog;
+
+    // Check user defined lighting mode and output accordingly
+    switch(mode)
+    {
+        case 0: colour = colourWithFog; break;
+        case 1: colour = colourWithLight; break;
+        case 2: colour = surfaceColour.rgb; break;
+        case 3: colour = ApplyDirectionalLight(Light, vec3(0.8, 0.8, 0.8), normalInCameraSpace, surfaceToCamera); break;
+        case 4: colour = normalInCameraSpace; break;
+    }
+}
